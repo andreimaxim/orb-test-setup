@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "No Claude project setup is required."
+if ! command -v ruby >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install --yes ruby
+fi
+
+ruby --version

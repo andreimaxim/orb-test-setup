@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "No Claude project services need to be resumed."
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+for _ in {1..3}; do
+  mktemp "$project_root/random-file-XXXXXX"
+done
