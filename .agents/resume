@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "No project services need to be resumed."
