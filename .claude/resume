@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-for _ in {1..3}; do
-  mktemp "$project_root/random-file-XXXXXX"
-done

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly mise_bin="$HOME/.local/bin/mise"
+readonly profile_marker="# orb-test-setup mise"
+
+cd "$project_root"
+
+sudo apt-get update
+sudo apt-get install --yes \
+  build-essential \
+  ca-certificates \
+  curl \
+  libffi-dev \
+  libgdbm-dev \
+  libreadline-dev \
+  libssl-dev \
+  libyaml-dev \
+  zlib1g-dev
+
+if [[ ! -x "$mise_bin" ]]; then
+  curl --fail --location https://mise.run | sh
+fi
+
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<EOF
+
+$profile_marker
+eval "\$("$mise_bin" activate bash)"
+EOF
+fi
+
+"$mise_bin" settings set idiomatic_version_file_enable_tools ruby
+"$mise_bin" install
+"$mise_bin" exec -- ruby --version
+"$mise_bin" exec -- bundle install
