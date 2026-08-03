@@ -10,11 +10,6 @@ readonly ruby_dir="$HOME/.local"
 
 cd "$project_root"
 
-sudo apt-get update
-sudo apt-get install --yes \
-  ca-certificates \
-  curl
-
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
