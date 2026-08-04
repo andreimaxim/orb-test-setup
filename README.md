@@ -75,11 +75,3 @@ Run the test suite:
 ```sh
 rake test
 ```
-
-The gem exposes one small method:
-
-```ruby
-require "orb/test/setup"
-
-Orb::Test::Setup.hello # => "Hello from the orb!"
-```
