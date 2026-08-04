@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ruby_version="4.0.6"
 readonly ruby_archive="ruby-${ruby_version}.x86_64_linux.tar.gz"
 readonly ruby_url="https://github.com/jdx/ruby/releases/download/${ruby_version}/${ruby_archive}"
 readonly ruby_sha256="aefa111873bac3b15c5c416bfaaca84e793d5312d4496d651ad79c44521b200a"
-readonly ruby_dir="$HOME/.local"
 
-cd "$project_root"
+cd "$repo_root"
 
+echo "Installing Ruby and gems..."
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-curl --fail --location "$ruby_url" --output "$tmp_dir/$ruby_archive"
+curl --fail --location --silent --show-error "$ruby_url" --output "$tmp_dir/$ruby_archive"
 printf '%s  %s\n' "$ruby_sha256" "$tmp_dir/$ruby_archive" | sha256sum --check
 
-mkdir -p "$ruby_dir"
+mkdir -p "$HOME/.local"
 tar --extract --gzip \
   --file "$tmp_dir/$ruby_archive" \
-  --directory "$ruby_dir" \
+  --directory "$HOME/.local" \
   --strip-components 1
 
-"$ruby_dir/bin/ruby" --version
-"$ruby_dir/bin/ruby" "$ruby_dir/bin/bundle" install
+bundle install --jobs "$(nproc)"
+
+echo "Cloud sandbox setup complete."
