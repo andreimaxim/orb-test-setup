@@ -6,7 +6,8 @@ environments — with a Ruby project.
 
 It contains a minimal Rails 8.1 API application on Ruby 4.0.6, backed by
 PostgreSQL and Redis, used to verify that an agent sandbox can install a
-toolchain, run database services, and execute a test suite against them.
+toolchain, run database services, execute a test suite against them, and
+receive an environment variable — `RAILS_MASTER_KEY` — from its host.
 
 ## What the application does
 
@@ -33,6 +34,10 @@ suite that stubs the cache out cannot tell you whether Redis is running — and
 that is exactly what this repository exists to check. Each parallel test worker
 gets its own Redis namespace (keyed on its PID) alongside the numbered test
 database Rails gives it, so workers cannot read each other's entries.
+
+The suite covers one more thing that has nothing to do with either endpoint:
+that `RAILS_MASTER_KEY` reached the session. See [The master
+key](#the-master-key).
 
 ## How the environment is set up
 
@@ -138,6 +143,89 @@ Because both hooks are synchronous, `.agents/resume` is on the critical path of
 every wake-up. Keep it to the few things that genuinely cannot survive a
 container being reclaimed.
 
+## The master key
+
+`config/credentials.yml.enc` is committed. `config/master.key` is not — it is
+gitignored, which is the arrangement Rails ships. The encrypted file is useless
+to anyone without the key, and the key is handed to the app out of band, so a
+checkout carries its secrets around without exposing them.
+
+That out-of-band delivery is the third thing worth testing about a sandbox,
+after "can it install things" and "can it keep a daemon running": does an
+environment variable configured on the host actually reach the session? Rails
+reads the key from `config/master.key` if the file is there, and otherwise from
+the `RAILS_MASTER_KEY` environment variable. In a cloud session the file never
+exists, so only the variable can satisfy it.
+
+The key for this repository is:
+
+```
+07526d26a503c97bfbd0912247d225f3
+```
+
+**Publishing a master key is normally the one thing you must not do.** It is
+published here on purpose, because this repository is a test fixture: the
+credentials file behind it holds a generated `secret_key_base` and a canary
+string, for an application that is never deployed and has no sessions, no
+users and no third-party API keys. Treat the value as a fixture, not as a
+secret. If you fork this into something real, run `bin/rails credentials:edit`
+to write a fresh file and generate a new key, and never paste that one
+anywhere.
+
+### Setting it in a Claude Code cloud environment
+
+Environment variables belong to the *environment*, not the repository. At
+[claude.ai/code](https://claude.ai/code), select the cloud icon showing the
+current environment's name in the row above the message box, then hover the
+environment and select the settings icon (or **Add cloud environment** for a
+new one). The dialog has an **Environment variables** box that takes `.env`
+format, one pair per line:
+
+```
+RAILS_MASTER_KEY=07526d26a503c97bfbd0912247d225f3
+```
+
+Save, then start a **new** session. A session copies the environment's
+variables once, at startup, so a session that is already running keeps the
+values it started with and will not see the change.
+
+The dialog warns that anyone who uses the environment can read these values,
+which is exactly why a fixture key is the right thing to paste there and a
+production key is not. Pro and Max plans offer **API credentials** as the
+alternative for real secrets, but that mechanism only attaches a key to
+outbound HTTP requests through the agent proxy — `RAILS_MASTER_KEY` is read by
+the app itself, so it cannot use it. A real Rails app in a shared sandbox wants
+a throwaway key for a throwaway credentials file, not its production one.
+
+For an Amp orb, set the same variable wherever that orb configures its
+environment; the mechanism the app cares about is only that
+`RAILS_MASTER_KEY` is exported in the shell that runs `bin/rails`.
+
+### Checking that it arrived
+
+`test/credentials_test.rb` decrypts the file and asserts on the canary, so a
+missing key is a test failure with a message rather than a mystery:
+
+```
+Failure:
+CredentialsTest#test_the_encrypted_credentials_can_be_decrypted
+could not decrypt config/credentials.yml.enc — set RAILS_MASTER_KEY, see README.md
+```
+
+Nothing earlier in the chain notices. `.agents/setup` succeeds without the key,
+because `db:prepare` and `bundle install` never touch credentials, and Rails
+falls back to `tmp/local_secret.txt` for `secret_key_base` in development and
+test. The suite is the first thing that asks.
+
+To work on the repository locally, either export the variable or write the key
+to the file the way Rails expects:
+
+```sh
+echo 07526d26a503c97bfbd0912247d225f3 > config/master.key
+```
+
+Both paths are tested; `config/master.key` stays gitignored either way.
+
 ## Network access caveats
 
 Claude Code cloud environments with "trusted" network access only allow
@@ -169,6 +257,10 @@ bin/rails server      # http://localhost:3000/articles
 bin/rails db:seed     # two rows to read back; idempotent
 bin/ci                # gem audit, tests, and a seed replant
 ```
+
+Ten tests across three files, one per thing the sandbox has to get right:
+`test/models` and `test/controllers` for PostgreSQL and Redis,
+`test/credentials_test.rb` for `RAILS_MASTER_KEY`.
 
 To exercise the parallel path — a separate database and Redis namespace per
 worker — override the worker count, since the suite is under the threshold
