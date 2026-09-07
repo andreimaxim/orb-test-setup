@@ -9,6 +9,19 @@ readonly ruby_sha256="aefa111873bac3b15c5c416bfaaca84e793d5312d4496d651ad79c4452
 
 cd "$repo_root"
 
+echo "Installing database services..."
+sudo apt-get update || true
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  postgresql \
+  postgresql-contrib \
+  redis-server
+
+echo "Starting database services..."
+sudo service postgresql start
+sudo service redis-server start
+
+sudo -u postgres createuser --superuser "$(id -un)" 2>/dev/null || true
+
 echo "Installing Ruby and gems..."
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -22,6 +35,10 @@ tar --extract --gzip \
   --directory "$HOME/.local" \
   --strip-components 1
 
+gem install bundler-audit --no-document
 bundle install --jobs "$(nproc)"
+
+echo "Preparing Rails databases..."
+bin/rails db:prepare
 
 echo "Cloud sandbox setup complete."
