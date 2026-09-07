@@ -1,8 +1,8 @@
 # Orb Test Setup
 
 A sample repository for testing cloud development environments — specifically
-[Amp](https://ampcode.com) Orbs and [Claude Code](https://claude.ai/code) cloud
-environments — with a Ruby project.
+[Claude Code](https://claude.ai/code) cloud environments and
+[Amp](https://ampcode.com) Orbs — with a Ruby project.
 
 It contains a minimal Rails 8.1 API application on Ruby 4.0.6, backed by
 PostgreSQL and Redis, used to verify that an agent sandbox can install a
@@ -73,8 +73,8 @@ the same kind of quiet: the credentials read back empty and `canary` comes out
 `null`.
 
 This is what makes the master key load-bearing rather than decorative — the
-app itself reads it on every status request. See [The master
-key](#the-master-key).
+app itself reads it on every status request. See [Environment
+variables](#environment-variables).
 
 Note that `/status` is not the same as Rails' generated `/up`, which stays
 where it is. `/up` returns 200 as soon as the app boots without raising, and
@@ -184,28 +184,29 @@ Because both hooks are synchronous, `.agents/resume` is on the critical path of
 every wake-up. Keep it to the few things that genuinely cannot survive a
 container being reclaimed.
 
-## The master key
+## Environment variables
 
-`config/credentials.yml.enc` is committed. `config/master.key` is not — it is
-gitignored, which is the arrangement Rails ships. The encrypted file is useless
-to anyone without the key, and the key is handed to the app out of band, so a
-checkout carries its secrets around without exposing them.
-
-That out-of-band delivery is the third thing worth testing about a sandbox,
-after "can it install things" and "can it keep a daemon running": does an
-environment variable configured on the host actually reach the session? Rails
-reads the key from `config/master.key` if the file is there, and otherwise from
-the `RAILS_MASTER_KEY` environment variable. In a cloud session the file never
-exists, so only the variable can satisfy it.
-
-The key for this repository is:
+This application needs one, and a session that does not have it fails:
 
 ```
-07526d26a503c97bfbd0912247d225f3
+RAILS_MASTER_KEY=07526d26a503c97bfbd0912247d225f3
 ```
 
-**Publishing a master key is normally the one thing you must not do.** It is
-published here on purpose, because this repository is a test fixture: the
+Rails encrypts `config/credentials.yml.enc` with a master key, which it reads
+from `config/master.key` if that file is there and otherwise from
+`RAILS_MASTER_KEY`. The encrypted file is committed; the key file is
+gitignored, which is the arrangement Rails ships — the encrypted file is
+useless to anyone without the key, so a checkout can carry its secrets around
+without exposing them. `RAILS_MASTER_KEY` is still the variable's name as of
+Rails 8.1.
+
+A fresh clone therefore has no key file, and only the environment variable can
+supply one. That is what makes this worth testing, and the third thing worth
+testing about a sandbox after "can it install things" and "can it keep a daemon
+running": does a variable configured on the host actually reach the session?
+
+**Publishing a master key is normally the one thing you must not do.** This one
+is published on purpose, because the repository is a test fixture: the
 credentials file behind it holds a generated `secret_key_base` and a canary
 string, for an application that is never deployed and has no sessions, no
 users and no third-party API keys. Treat the value as a fixture, not as a
@@ -213,7 +214,7 @@ secret. If you fork this into something real, run `bin/rails credentials:edit`
 to write a fresh file and generate a new key, and never paste that one
 anywhere.
 
-### Setting it in a Claude Code cloud environment
+### Setting RAILS_MASTER_KEY in a Claude Code cloud environment
 
 Environment variables belong to the *environment*, not the repository. At
 [claude.ai/code](https://claude.ai/code), select the cloud icon showing the
@@ -242,10 +243,10 @@ For an Amp orb, set the same variable wherever that orb configures its
 environment; the mechanism the app cares about is only that
 `RAILS_MASTER_KEY` is exported in the shell that runs `bin/rails`.
 
-### Checking that it arrived
+### What happens when the key is missing
 
-Two things ask. `GET /status` reports the canary back, or `null` with the
-whole response downgraded to a 503:
+Two things notice, and nothing else does. `GET /status` reports the canary
+back, or `null` with the whole response downgraded to a 503:
 
 ```json
 "credentials": { "ok": false, "canary": null }
@@ -260,10 +261,10 @@ CredentialsTest#test_the_encrypted_credentials_can_be_decrypted
 could not decrypt config/credentials.yml.enc — set RAILS_MASTER_KEY, see README.md
 ```
 
-Nothing earlier in the chain notices. `.agents/setup` succeeds without the key,
-because `db:prepare` and `bundle install` never touch credentials, and Rails
-falls back to `tmp/local_secret.txt` for `secret_key_base` in development and
-test. The suite is the first thing that asks.
+Setup is not one of them. `.agents/setup` succeeds without the key, because
+`bundle install` and `db:prepare` never touch credentials, and Rails falls back
+to `tmp/local_secret.txt` for `secret_key_base` outside production. A sandbox
+missing the variable looks perfectly healthy until something asks.
 
 To work on the repository locally, either export the variable or write the key
 to the file the way Rails expects:
