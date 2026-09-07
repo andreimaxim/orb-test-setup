@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$repo_root"
+
+echo "Resuming cloud sandbox..."
+
+# The container filesystem is snapshotted once `.agents/setup` completes, so
+# Ruby and the bundled gems are normally still on disk when a session resumes.
+# If they are not, there is nothing to resume from — do the full install.
+if ! command -v ruby >/dev/null 2>&1 || ! bundle check >/dev/null 2>&1; then
+  echo "Ruby or gems are missing, falling back to a full setup."
+  exec bash "$repo_root/.agents/setup"
+fi
+
+echo "Ruby $(ruby --version | cut -d ' ' -f 2) and gems are ready."
+
+# Processes, unlike files, do not survive the container being reclaimed. Any
+# long-running service the project depends on has to be started again here.
+# This project has none; see README.md for the pattern to follow.
+
+echo "Cloud sandbox resume complete."

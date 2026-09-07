@@ -9,6 +9,15 @@
             "command": "if [ \"${CLAUDE_CODE_REMOTE:-}\" = \"true\" ]; then bash \"$CLAUDE_PROJECT_DIR/.agents/setup\"; fi"
           }
         ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"${CLAUDE_CODE_REMOTE:-}\" = \"true\" ]; then bash \"$CLAUDE_PROJECT_DIR/.agents/resume\"; fi"
+          }
+        ]
       }
     ]
   }
