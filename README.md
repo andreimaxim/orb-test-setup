@@ -11,12 +11,11 @@ receive an environment variable — `RAILS_MASTER_KEY` — from its host.
 
 ## What the application does
 
-Two endpoints, one per service:
-
-| Endpoint          | Reads from                                        |
-| ----------------- | ------------------------------------------------- |
-| `GET /articles`   | PostgreSQL, directly                               |
-| `GET /articles/1` | Redis on a hit, PostgreSQL on a miss               |
+| Endpoint          | Reads from                                          |
+| ----------------- | --------------------------------------------------- |
+| `GET /articles`   | PostgreSQL, directly                                 |
+| `GET /articles/1` | Redis on a hit, PostgreSQL on a miss                 |
+| `GET /status`     | all three, in one request                            |
 
 `Article.cached` is the whole of the second one:
 
@@ -35,9 +34,51 @@ that is exactly what this repository exists to check. Each parallel test worker
 gets its own Redis namespace (keyed on its PID) alongside the numbered test
 database Rails gives it, so workers cannot read each other's entries.
 
-The suite covers one more thing that has nothing to do with either endpoint:
-that `RAILS_MASTER_KEY` reached the session. See [The master
+### The status endpoint
+
+`GET /status` is the one to curl after a sandbox comes up. It queries
+PostgreSQL, round trips a token through Redis, and decrypts a value out of
+`config/credentials.yml.enc`, then answers 200 only if all three worked:
+
+```json
+{
+  "ok": true,
+  "checks": {
+    "postgres": { "ok": true, "articles": 2 },
+    "redis": { "ok": true },
+    "credentials": { "ok": true, "canary": "the master key reached the sandbox" }
+  }
+}
+```
+
+A broken dependency turns its own entry false and the response into a 503,
+while the others keep reporting honestly — stop PostgreSQL and Redis still
+says `ok`. `curl --fail` is therefore a usable one-line smoke test:
+
+```sh
+curl --fail --silent http://localhost:3000/status
+```
+
+Failures name themselves where they can. A dead PostgreSQL raises, so its entry
+carries the exception:
+
+```json
+"postgres": { "ok": false, "error": "ActiveRecord::ConnectionNotEstablished: connection to server on socket ..." }
+```
+
+Redis is quieter, because `Rails.cache` swallows connection errors and returns
+nil rather than raising. There is no exception to report, so the probe simply
+does not come back and the entry is `{ "ok": false }`. A missing master key is
+the same kind of quiet: the credentials read back empty and `canary` comes out
+`null`.
+
+This is what makes the master key load-bearing rather than decorative — the
+app itself reads it on every status request. See [The master
 key](#the-master-key).
+
+Note that `/status` is not the same as Rails' generated `/up`, which stays
+where it is. `/up` returns 200 as soon as the app boots without raising, and
+knows nothing about whether its dependencies answer.
 
 ## How the environment is set up
 
@@ -203,8 +244,15 @@ environment; the mechanism the app cares about is only that
 
 ### Checking that it arrived
 
-`test/credentials_test.rb` decrypts the file and asserts on the canary, so a
-missing key is a test failure with a message rather than a mystery:
+Two things ask. `GET /status` reports the canary back, or `null` with the
+whole response downgraded to a 503:
+
+```json
+"credentials": { "ok": false, "canary": null }
+```
+
+And `test/credentials_test.rb` decrypts the file and asserts on the canary, so
+a missing key is a test failure with a message rather than a mystery:
 
 ```
 Failure:
@@ -258,9 +306,17 @@ bin/rails db:seed     # two rows to read back; idempotent
 bin/ci                # gem audit, tests, and a seed replant
 ```
 
-Ten tests across three files, one per thing the sandbox has to get right:
-`test/models` and `test/controllers` for PostgreSQL and Redis,
-`test/credentials_test.rb` for `RAILS_MASTER_KEY`.
+Sixteen tests, one group per thing the sandbox has to get right: `test/models`
+and `test/controllers/articles_controller_test.rb` for PostgreSQL and Redis,
+`test/credentials_test.rb` for `RAILS_MASTER_KEY`, and
+`test/controllers/status_controller_test.rb` for all three at once, including
+what the endpoint does when a dependency is genuinely unreachable.
+
+With a server running, the same check in one line:
+
+```sh
+curl --fail --silent http://localhost:3000/status
+```
 
 To exercise the parallel path — a separate database and Redis namespace per
 worker — override the worker count, since the suite is under the threshold
