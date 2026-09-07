@@ -1,0 +1,7 @@
+postgres:
+  title: Reading from PostgreSQL
+  body: GET /articles queries the database directly.
+
+redis:
+  title: Reading from Redis
+  body: GET /articles/:id serves the row out of Rails.cache.
