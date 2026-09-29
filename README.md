@@ -1,5 +1,7 @@
 # Orb Test Setup
 
+Hello from the orb!
+
 A sample repository for testing cloud development environments — specifically
 [Claude Code](https://claude.ai/code) cloud environments and
 [Amp](https://ampcode.com) Orbs — with a Ruby project.
